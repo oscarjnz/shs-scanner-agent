@@ -1,0 +1,100 @@
+# Compila los binarios del agente y los publica en GitHub Releases.
+#
+# Se dispara automáticamente cuando empujas un tag con formato vX.Y.Z (ej. v0.1.0).
+#
+# Cómo crear una release desde tu PC:
+#   1. (Opcional) Cambia la versión en package.json para que coincida
+#   2. git add -A && git commit -m "Release v0.1.0"
+#   3. git tag v0.1.0 && git push --tags
+#   4. Espera ~5 min. La release aparece en /releases/latest
+#
+# Después de eso, install.sh / install.ps1 funcionan automáticamente.
+
+name: Build & Release Agent Binaries
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  # Permite dispararlo manualmente desde la UI de Actions
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Necesario para crear la release y subir assets
+
+jobs:
+  release:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run build
+
+      - name: Build all binaries (Windows, macOS arm64, macOS x64, Linux x64)
+        run: npm run package:all
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd build
+          sha256sum shs-scanner-* > SHA256SUMS.txt
+          echo "── Checksums ──"
+          cat SHA256SUMS.txt
+
+      - name: Upload artifacts (rescate por si Release falla)
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: build/
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Scanner Agent ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            build/shs-scanner-windows-x64.exe
+            build/shs-scanner-macos-arm64
+            build/shs-scanner-macos-x64
+            build/shs-scanner-linux-x64
+            build/SHA256SUMS.txt
+          body: |
+            ## S.S.S Scanner Agent ${{ github.ref_name }}
+
+            Agente local que ejecuta escaneos de red en la máquina del cliente.
+
+            ### Instalación rápida
+
+            **Windows (PowerShell admin):**
+            ```powershell
+            iwr https://securitysmartservices.site/install.ps1 | iex
+            ```
+
+            **macOS / Linux:**
+            ```bash
+            curl -fsSL https://securitysmartservices.site/install.sh | sh
+            ```
+
+            ### Descarga manual
+
+            Elige el archivo que corresponde a tu sistema. Los hashes SHA-256 están en `SHA256SUMS.txt`.
+
+            | Sistema | Archivo |
+            |---|---|
+            | Windows x64 | `shs-scanner-windows-x64.exe` |
+            | macOS Apple Silicon (M1+) | `shs-scanner-macos-arm64` |
+            | macOS Intel | `shs-scanner-macos-x64` |
+            | Linux x64 | `shs-scanner-linux-x64` |

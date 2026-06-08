@@ -1,0 +1,41 @@
+{
+  "name": "shs-scanner-agent",
+  "version": "0.1.0",
+  "description": "Agente local de S.S.S que ejecuta escaneos de red en la máquina del cliente. Open source — MIT.",
+  "private": false,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "shs-scanner": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "package:win": "pkg dist/index.js --targets node22-win-x64 --output build/shs-scanner-windows-x64.exe",
+    "package:mac-arm": "pkg dist/index.js --targets node22-macos-arm64 --output build/shs-scanner-macos-arm64",
+    "package:mac-intel": "pkg dist/index.js --targets node22-macos-x64 --output build/shs-scanner-macos-x64",
+    "package:linux": "pkg dist/index.js --targets node22-linux-x64 --output build/shs-scanner-linux-x64",
+    "package:all": "npm run build && npm run package:win && npm run package:mac-arm && npm run package:mac-intel && npm run package:linux"
+  },
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "assets": [],
+    "targets": [
+      "node22-win-x64",
+      "node22-macos-arm64",
+      "node22-macos-x64",
+      "node22-linux-x64"
+    ]
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "@yao-pkg/pkg": "^6.6.0"
+  }
+}

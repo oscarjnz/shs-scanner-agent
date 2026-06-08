@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+.shs-agent.json
+
+# pkg cache
+.pkg-cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
