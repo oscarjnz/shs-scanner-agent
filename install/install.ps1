@@ -3,7 +3,7 @@
   S.S.S Scanner Agent - Instalador para Windows
 
 .DESCRIPTION
-  Uso típico (el cliente abre PowerShell como Administrador y pega):
+  Uso tipico (el cliente abre PowerShell como Administrador y pega):
 
     iwr https://securitysmartservices.site/install.ps1 | iex
 
@@ -11,13 +11,13 @@
   agrega al PATH, registra Windows Service para arrancarlo al boot, y verifica nmap.
 
 .PARAMETER InstallDir
-  Carpeta de instalación. Default: $env:ProgramFiles\SHS Scanner
+  Carpeta de instalacion. Default: $env:ProgramFiles\SHS Scanner
 
 .PARAMETER Version
   Tag de release de GitHub. Default: latest
 
 .PARAMETER NoService
-  Si está presente, NO registra el Windows Service.
+  Si esta presente, NO registra el Windows Service.
 
 .PARAMETER GithubRepo
   Repo en formato owner/name. Default: oscarjnz/shs-scanner-agent
@@ -50,10 +50,10 @@ function Test-Administrator {
 if (-not (Test-Administrator)) {
   Write-Err "Este instalador necesita PowerShell como Administrador."
   Write-Host ""
-  Write-Host "  Cierra esta ventana y abre PowerShell así:"
-  Write-Host "    1) Tecla Windows → escribe 'PowerShell'"
-  Write-Host "    2) Clic derecho → 'Ejecutar como administrador'"
-  Write-Host "    3) Vuelve a pegar el comando de instalación"
+  Write-Host "  Cierra esta ventana y abre PowerShell asi:"
+  Write-Host "    1) Tecla Windows -> escribe 'PowerShell'"
+  Write-Host "    2) Clic derecho -> 'Ejecutar como administrador'"
+  Write-Host "    3) Vuelve a pegar el comando de instalacion"
   Write-Host ""
   exit 1
 }
@@ -79,21 +79,21 @@ function Test-Nmap {
     Write-Success "nmap detectado: $version"
     return $true
   } catch {
-    Write-Warn "nmap no está instalado. Sin él, el escáner no podrá auditar tu red."
+    Write-Warn "nmap no esta instalado. Sin el, el escaner no podra auditar tu red."
     Write-Host ""
-    Write-Host "  Cómo instalarlo:" -ForegroundColor White
-    Write-Host "    Opción A (recomendada): descarga oficial"
+    Write-Host "  Como instalarlo:" -ForegroundColor White
+    Write-Host "    Opcion A (recomendada): descarga oficial"
     Write-Host "       https://nmap.org/download"
-    Write-Host "    Opción B (con winget):"
+    Write-Host "    Opcion B (con winget):"
     Write-Host "       winget install Insecure.Nmap"
-    Write-Host "    Opción C (con chocolatey):"
+    Write-Host "    Opcion C (con chocolatey):"
     Write-Host "       choco install nmap -y"
     Write-Host ""
     Write-Host "  Importante:" -ForegroundColor Yellow
-    Write-Host "    Durante la instalación de nmap, deja MARCADA la opción de Npcap."
-    Write-Host "    Sin Npcap, los escaneos ARP no funcionarán correctamente."
+    Write-Host "    Durante la instalacion de nmap, deja MARCADA la opcion de Npcap."
+    Write-Host "    Sin Npcap, los escaneos ARP no funcionaran correctamente."
     Write-Host ""
-    Write-Host "  El escáner se instala igual, pero 'shs-scanner doctor' te avisará"
+    Write-Host "  El escaner se instala igual, pero 'shs-scanner doctor' te avisara"
     Write-Host "  hasta que tengas nmap funcionando."
     Write-Host ""
     return $false
@@ -111,7 +111,7 @@ function Get-Binary {
     $url = "https://github.com/$GithubRepo/releases/download/$Version/$asset"
   }
 
-  Write-Step "Descargando $asset…"
+  Write-Step "Descargando $asset..."
 
   $tmp = New-TemporaryFile
   try {
@@ -126,7 +126,7 @@ function Get-Binary {
   } catch {
     Write-Err "No se pudo descargar de $url"
     Write-Err "Detalle: $($_.Exception.Message)"
-    Write-Err "Verifica tu conexión o consulta https://github.com/$GithubRepo/releases"
+    Write-Err "Verifica tu conexion o consulta https://github.com/$GithubRepo/releases"
     Remove-Item $tmp -ErrorAction SilentlyContinue
     exit 1
   }
@@ -148,11 +148,11 @@ function Get-Binary {
 
   $finalPath = Join-Path $InstallDir $BinName
 
-  # Si ya existe (reinstalación), detener servicio si lo hay y reemplazar
+  # Si ya existe (reinstalacion), detener servicio si lo hay y reemplazar
   if (Test-Path $finalPath) {
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc -and $svc.Status -eq "Running") {
-      Write-Step "Deteniendo servicio existente para reemplazar el binario…"
+      Write-Step "Deteniendo servicio existente para reemplazar el binario..."
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
     }
     Remove-Item $finalPath -Force
@@ -163,7 +163,7 @@ function Get-Binary {
   return $finalPath
 }
 
-# ─── Añadir al PATH del sistema (idempotente) ─────────────────────
+# ─── Anadir al PATH del sistema (idempotente) ─────────────────────
 function Add-ToPath {
   param([string]$Dir)
 
@@ -177,10 +177,10 @@ function Add-ToPath {
 
   $newPath = ($entries + $Dir) -join ";"
   [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
-  # Actualizar PATH de la sesión actual también
+  # Actualizar PATH de la sesion actual tambien
   $env:Path = "$env:Path;$Dir"
-  Write-Success "Añadido al PATH del sistema: $Dir"
-  Write-Warn "Las ventanas de PowerShell que ya tenías abiertas necesitarán reabrirse."
+  Write-Success "Anadido al PATH del sistema: $Dir"
+  Write-Warn "Las ventanas de PowerShell que ya tenias abiertas necesitaran reabrirse."
 }
 
 # ─── Windows Service ──────────────────────────────────────────────
@@ -192,19 +192,19 @@ function Install-WindowsService {
     return
   }
 
-  Write-Step "Registrando Windows Service '$ServiceName'…"
+  Write-Step "Registrando Windows Service '$ServiceName'..."
 
   $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
   if ($existing) {
     if ($existing.Status -eq "Running") {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
     }
-    # Borrar servicio anterior y recrearlo (más simple que sc.exe config)
+    # Borrar servicio anterior y recrearlo (mas simple que sc.exe config)
     & sc.exe delete $ServiceName | Out-Null
     Start-Sleep -Seconds 1
   }
 
-  # Crear el servicio con New-Service (más limpio que sc.exe + manejo correcto de espacios en rutas)
+  # Crear el servicio con New-Service (mas limpio que sc.exe + manejo correcto de espacios en rutas)
   try {
     $null = New-Service -Name $ServiceName `
       -BinaryPathName "`"$BinPath`" start" `
@@ -217,7 +217,7 @@ function Install-WindowsService {
     return
   }
 
-  # Configurar reinicio automático con sc.exe (no hay equivalente en New-Service)
+  # Configurar reinicio automatico con sc.exe (no hay equivalente en New-Service)
   # 1er fallo a los 10s, 2do a los 30s, 3er a los 60s
   & sc.exe failure $ServiceName reset= 86400 actions= restart/10000/restart/30000/restart/60000 | Out-Null
 
@@ -229,7 +229,7 @@ function Install-WindowsService {
   Write-Host "  Para ver su estado:" -ForegroundColor White
   Write-Host "    Get-Service $ServiceName"
   Write-Host ""
-  Write-Host "  NOTA: arrancar el servicio AHORA fallará si todavía no emparejaste"
+  Write-Host "  NOTA: arrancar el servicio AHORA fallara si todavia no emparejaste"
   Write-Host "        este agente. Empareja primero (paso 2 de abajo) y luego inicia."
 }
 
@@ -240,18 +240,18 @@ function Show-NextSteps {
   Write-Host ""
   Write-Host "[OK] Instalacion completada." -ForegroundColor Green
   Write-Host ""
-  Write-Host "Próximos pasos:" -ForegroundColor White
+  Write-Host "Proximos pasos:" -ForegroundColor White
   Write-Host ""
-  Write-Host "  1. Genera un código de emparejamiento en tu dashboard de S.S.S:"
+  Write-Host "  1. Genera un codigo de emparejamiento en tu dashboard de S.S.S:"
   Write-Host "     https://securitysmartservices.site/settings/scanners" -ForegroundColor DarkGray
   Write-Host ""
   Write-Host "  2. Empareja este agente con tu cuenta:"
-  Write-Host "     shs-scanner pair <código>" -ForegroundColor White
+  Write-Host "     shs-scanner pair <codigo>" -ForegroundColor White
   Write-Host ""
-  Write-Host "  3. Verifica todo con el diagnóstico:"
+  Write-Host "  3. Verifica todo con el diagnostico:"
   Write-Host "     shs-scanner doctor" -ForegroundColor White
   Write-Host ""
-  Write-Host "  4. Arranca el servicio (o reinicia tu PC y arrancará solo):"
+  Write-Host "  4. Arranca el servicio (o reinicia tu PC y arrancara solo):"
   Write-Host "     Start-Service $ServiceName" -ForegroundColor White
   Write-Host ""
   Write-Host "  Para desinstalar en cualquier momento:" -ForegroundColor DarkGray
@@ -259,9 +259,28 @@ function Show-NextSteps {
   Write-Host ""
 }
 
+# Crea la carpeta de identidad COMPARTIDA (ProgramData) con permisos para que
+# tanto el usuario (al emparejar) como el servicio (cuenta Sistema) la usen.
+function Initialize-ConfigDir {
+  $dir = Join-Path $env:ProgramData "shs-scanner"
+  if (-not (Test-Path $dir)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  }
+  try {
+    $acl = Get-Acl $dir
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+      "BUILTIN\Users", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+    $acl.AddAccessRule($rule)
+    Set-Acl -Path $dir -AclObject $acl
+  } catch {
+    Write-Warn "No se pudieron ajustar permisos de $dir (continuo igual)."
+  }
+  Write-Success "Carpeta de identidad lista: $dir"
+}
+
 # ─── Main ─────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "S.S.S Scanner Agent — Instalador" -ForegroundColor White
+Write-Host "S.S.S Scanner Agent - Instalador" -ForegroundColor White
 Write-Host ""
 
 $arch = Get-Arch
@@ -271,5 +290,6 @@ Test-Nmap | Out-Null
 
 $binPath = Get-Binary -Arch $arch
 Add-ToPath -Dir $InstallDir
+Initialize-ConfigDir
 Install-WindowsService -BinPath $binPath
 Show-NextSteps -BinPath $binPath

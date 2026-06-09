@@ -2,13 +2,13 @@
 #
 # S.S.S Scanner Agent - Instalador para macOS y Linux
 # ────────────────────────────────────────────────────
-# Uso típico (el cliente pega esto en su Terminal):
+# Uso tipico (el cliente pega esto en su Terminal):
 #
 #   curl -fsSL https://securitysmartservices.site/install.sh | sh
 #
 # Variables que puedes setear antes para personalizar:
 #   SHS_INSTALL_DIR    Default: /usr/local/bin
-#   SHS_VERSION        Default: latest (toma la última release)
+#   SHS_VERSION        Default: latest (toma la ultima release)
 #   SHS_NO_SERVICE=1   No registrar como servicio del sistema
 #   SHS_GITHUB_REPO    Default: oscarjnz/shs-scanner-agent
 #
@@ -28,17 +28,17 @@ else
   BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; RESET=""
 fi
 
-step()    { printf "${BLUE}▸${RESET} %s\n" "$1"; }
-success() { printf "${GREEN}✓${RESET} %s\n" "$1"; }
-warn()    { printf "${YELLOW}⚠${RESET}  %s\n" "$1"; }
-err()     { printf "${RED}✗${RESET} %s\n" "$1" >&2; }
+step()    { printf "${BLUE}>${RESET} %s\n" "$1"; }
+success() { printf "${GREEN}OK${RESET} %s\n" "$1"; }
+warn()    { printf "${YELLOW}!${RESET}  %s\n" "$1"; }
+err()     { printf "${RED}x${RESET} %s\n" "$1" >&2; }
 
 cleanup() {
   [ -n "${TMP_DIR:-}" ] && rm -rf "$TMP_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-# ─── Detección de OS y arquitectura ──────────────────────────────
+# ─── Deteccion de OS y arquitectura ──────────────────────────────
 detect_platform() {
   local os arch
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -63,12 +63,12 @@ detect_platform() {
       ;;
   esac
 
-  # En Mac arm64 sería Apple Silicon; x64 sería Intel
+  # En Mac arm64 seria Apple Silicon; x64 seria Intel
   ASSET="shs-scanner-${OS}-${ARCH}"
   [ "$OS" = "macos" ] && [ "$ARCH" = "x64" ] && ASSET="shs-scanner-macos-x64"
 }
 
-# ─── Linux: detectar distribución ────────────────────────────────
+# ─── Linux: detectar distribucion ────────────────────────────────
 detect_distro() {
   if [ -f /etc/os-release ]; then
     # shellcheck disable=SC1091
@@ -79,16 +79,16 @@ detect_distro() {
   fi
 }
 
-# ─── nmap: chequear instalación, sugerir cómo instalarlo ─────────
+# ─── nmap: chequear instalacion, sugerir como instalarlo ─────────
 check_nmap() {
   if command -v nmap >/dev/null 2>&1; then
     success "nmap detectado: $(nmap --version | head -1)"
     return 0
   fi
 
-  warn "nmap no está instalado. Sin él, el escáner no podrá auditar tu red."
+  warn "nmap no esta instalado. Sin el, el escaner no podra auditar tu red."
   echo
-  echo "  ${BOLD}Cómo instalarlo:${RESET}"
+  echo "  ${BOLD}Como instalarlo:${RESET}"
   if [ "$OS" = "macos" ]; then
     echo "    brew install nmap         ${DIM}# requiere Homebrew (brew.sh)${RESET}"
   else
@@ -111,7 +111,7 @@ check_nmap() {
     esac
   fi
   echo
-  echo "  El escáner se instala igual, pero el comando ${BOLD}shs-scanner doctor${RESET} te avisará"
+  echo "  El escaner se instala igual, pero el comando ${BOLD}shs-scanner doctor${RESET} te avisara"
   echo "  hasta que tengas nmap funcionando."
   echo
 }
@@ -134,7 +134,7 @@ ensure_writable() {
       SUDO="sudo"
       step "Necesitamos privilegios de administrador para instalar en $INSTALL_DIR"
     else
-      err "No tienes permiso de escritura en $INSTALL_DIR y 'sudo' no está disponible."
+      err "No tienes permiso de escritura en $INSTALL_DIR y 'sudo' no esta disponible."
       err "Reintenta con SHS_INSTALL_DIR=\$HOME/.local/bin sh install.sh"
       exit 1
     fi
@@ -151,12 +151,12 @@ download_binary() {
     url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${ASSET}"
   fi
 
-  step "Descargando $ASSET ($([ "$VERSION" = "latest" ] && echo "última versión" || echo "$VERSION"))…"
+  step "Descargando $ASSET ($([ "$VERSION" = "latest" ] && echo "ultima version" || echo "$VERSION"))..."
 
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL -o "$TMP_DIR/$BIN_NAME" "$url" || {
       err "No se pudo descargar de $url"
-      err "Verifica tu conexión a internet o consulta https://github.com/${GITHUB_REPO}/releases"
+      err "Verifica tu conexion a internet o consulta https://github.com/${GITHUB_REPO}/releases"
       exit 1
     }
   elif command -v wget >/dev/null 2>&1; then
@@ -165,13 +165,13 @@ download_binary() {
       exit 1
     }
   else
-    err "Necesitas 'curl' o 'wget' instalado. Ninguno de los dos está disponible."
+    err "Necesitas 'curl' o 'wget' instalado. Ninguno de los dos esta disponible."
     exit 1
   fi
 
   chmod +x "$TMP_DIR/$BIN_NAME"
 
-  # Verificación: chequea que el binario se ejecuta y reporta su versión
+  # Verificacion: chequea que el binario se ejecuta y reporta su version
   if ! "$TMP_DIR/$BIN_NAME" version >/dev/null 2>&1; then
     err "El binario descargado no se ejecuta correctamente."
     err "Puede ser un problema de arquitectura o un binario corrupto."
@@ -187,7 +187,7 @@ install_systemd_service() {
   local service_file="/etc/systemd/system/shs-scanner.service"
   local current_user="${SUDO_USER:-$USER}"
 
-  step "Registrando servicio systemd…"
+  step "Registrando servicio systemd..."
 
   cat <<EOF | $SUDO tee "$service_file" >/dev/null
 [Unit]
@@ -218,7 +218,7 @@ EOF
   $SUDO systemctl daemon-reload
   success "Servicio creado en $service_file"
   echo
-  echo "  ${BOLD}Para arrancarlo automáticamente al boot:${RESET}"
+  echo "  ${BOLD}Para arrancarlo automaticamente al boot:${RESET}"
   echo "    sudo systemctl enable --now shs-scanner"
   echo
   echo "  ${BOLD}Para ver su estado:${RESET}"
@@ -228,7 +228,7 @@ EOF
 
 install_launchd_service() {
   local plist="$HOME/Library/LaunchAgents/com.shs.scanner.plist"
-  step "Registrando servicio launchd (usuario)…"
+  step "Registrando servicio launchd (usuario)..."
   mkdir -p "$HOME/Library/LaunchAgents"
 
   cat > "$plist" <<EOF
@@ -265,7 +265,7 @@ EOF
 
 install_service() {
   if [ "${SHS_NO_SERVICE:-0}" = "1" ]; then
-    warn "Saltando instalación de servicio (SHS_NO_SERVICE=1)"
+    warn "Saltando instalacion de servicio (SHS_NO_SERVICE=1)"
     return
   fi
 
@@ -274,8 +274,8 @@ install_service() {
   elif [ "$OS" = "macos" ]; then
     install_launchd_service
   else
-    warn "No detecté systemd ni launchd. El agente se instaló pero no como servicio."
-    warn "Arráncalo manualmente con: $BIN_NAME start"
+    warn "No detecte systemd ni launchd. El agente se instalo pero no como servicio."
+    warn "Arrancalo manualmente con: $BIN_NAME start"
   fi
 }
 
@@ -283,27 +283,27 @@ install_service() {
 verify_in_path() {
   if ! command -v "$BIN_NAME" >/dev/null 2>&1; then
     warn "$INSTALL_DIR no parece estar en tu PATH."
-    warn "Añádelo a tu shell rc (.bashrc / .zshrc):"
+    warn "Anadelo a tu shell rc (.bashrc / .zshrc):"
     echo "    export PATH=\"$INSTALL_DIR:\$PATH\""
     echo
     echo "  O ejecuta el agente con su ruta completa: $INSTALL_DIR/$BIN_NAME"
   fi
 }
 
-# ─── Pantalla final con próximos pasos ───────────────────────────
+# ─── Pantalla final con proximos pasos ───────────────────────────
 final_instructions() {
   echo
-  printf "${GREEN}${BOLD}✓ Instalación completada.${RESET}\n"
+  printf "${GREEN}${BOLD}OK Instalacion completada.${RESET}\n"
   echo
-  echo "${BOLD}Próximos pasos:${RESET}"
+  echo "${BOLD}Proximos pasos:${RESET}"
   echo
-  echo "  ${BOLD}1.${RESET} Genera un código de emparejamiento en tu dashboard de S.S.S:"
+  echo "  ${BOLD}1.${RESET} Genera un codigo de emparejamiento en tu dashboard de S.S.S:"
   echo "     ${DIM}https://securitysmartservices.site/settings/scanners${RESET}"
   echo
   echo "  ${BOLD}2.${RESET} Empareja este agente con tu cuenta:"
-  echo "     ${BOLD}$BIN_NAME pair <código>${RESET}"
+  echo "     ${BOLD}$BIN_NAME pair <codigo>${RESET}"
   echo
-  echo "  ${BOLD}3.${RESET} Verifica todo con el diagnóstico:"
+  echo "  ${BOLD}3.${RESET} Verifica todo con el diagnostico:"
   echo "     ${BOLD}$BIN_NAME doctor${RESET}"
   echo
   echo "  ${BOLD}4.${RESET} Arranca el agente (o deja que el servicio lo haga al iniciar):"
@@ -317,13 +317,13 @@ final_instructions() {
 # ─── Main ────────────────────────────────────────────────────────
 main() {
   echo
-  printf "${BOLD}S.S.S Scanner Agent — Instalador${RESET}\n"
+  printf "${BOLD}S.S.S Scanner Agent - Instalador${RESET}\n"
   echo
 
   detect_platform
   step "Sistema detectado: $OS / $ARCH"
 
-  [ "$OS" = "linux" ] && detect_distro && step "Distribución: $DISTRO"
+  [ "$OS" = "linux" ] && detect_distro && step "Distribucion: $DISTRO"
 
   check_nmap
   ensure_writable

@@ -22,9 +22,9 @@ else
   BOLD=""; GREEN=""; YELLOW=""; RED=""; BLUE=""; RESET=""
 fi
 
-step()    { printf "${BLUE}▸${RESET} %s\n" "$1"; }
-success() { printf "${GREEN}✓${RESET} %s\n" "$1"; }
-warn()    { printf "${YELLOW}⚠${RESET}  %s\n" "$1"; }
+step()    { printf "${BLUE}>${RESET} %s\n" "$1"; }
+success() { printf "${GREEN}OK${RESET} %s\n" "$1"; }
+warn()    { printf "${YELLOW}!${RESET}  %s\n" "$1"; }
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 
@@ -36,7 +36,7 @@ fi
 # ─── 1) Parar y borrar servicio del sistema ──────────────────────
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
   if systemctl list-unit-files 2>/dev/null | grep -q "^shs-scanner.service"; then
-    step "Deteniendo y desactivando servicio systemd…"
+    step "Deteniendo y desactivando servicio systemd..."
     $SUDO systemctl disable --now shs-scanner.service 2>/dev/null || true
     $SUDO rm -f /etc/systemd/system/shs-scanner.service
     $SUDO systemctl daemon-reload
@@ -45,7 +45,7 @@ if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
 elif [ "$OS" = "darwin" ]; then
   PLIST="$HOME/Library/LaunchAgents/com.shs.scanner.plist"
   if [ -f "$PLIST" ]; then
-    step "Descargando servicio launchd…"
+    step "Descargando servicio launchd..."
     launchctl unload "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"
     success "Servicio launchd eliminado"
@@ -54,7 +54,7 @@ fi
 
 # ─── 2) Borrar binario ───────────────────────────────────────────
 if [ -f "$INSTALL_DIR/$BIN_NAME" ]; then
-  step "Borrando binario $INSTALL_DIR/$BIN_NAME…"
+  step "Borrando binario $INSTALL_DIR/$BIN_NAME..."
   $SUDO rm -f "$INSTALL_DIR/$BIN_NAME"
   success "Binario eliminado"
 fi
@@ -65,9 +65,9 @@ if [ "${SHS_KEEP_IDENTITY:-0}" = "1" ]; then
   warn "Conservando identidad en $CONFIG_DIR (SHS_KEEP_IDENTITY=1)"
 else
   if [ -d "$CONFIG_DIR" ]; then
-    step "Borrando carpeta de configuración $CONFIG_DIR…"
+    step "Borrando carpeta de configuracion $CONFIG_DIR..."
     rm -rf "$CONFIG_DIR"
-    success "Configuración eliminada"
+    success "Configuracion eliminada"
   fi
 fi
 
@@ -76,9 +76,9 @@ if [ "$OS" = "darwin" ]; then
 fi
 
 echo
-printf "${GREEN}${BOLD}✓ Desinstalación completada.${RESET}\n"
+printf "${GREEN}${BOLD}OK Desinstalacion completada.${RESET}\n"
 echo
-echo "  Si quieres revocar este agente de tu cuenta también:"
+echo "  Si quieres revocar este agente de tu cuenta tambien:"
 echo "    Ve a https://securitysmartservices.site/settings/scanners"
 echo "    y haz clic en el icono de basura del agente."
 echo

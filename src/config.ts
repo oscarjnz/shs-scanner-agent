@@ -17,11 +17,16 @@ import { join, dirname } from "node:path";
 
 /** Carpeta donde vive el archivo de identidad, según el SO */
 function getConfigDir(): string {
-  // En Windows: C:\Users\<user>\AppData\Local\shs-scanner
-  // En Mac/Linux: ~/.config/shs-scanner
+  // En Windows usamos ProgramData (compartido a nivel de máquina) en vez de la
+  // carpeta de usuario. Esto es CRÍTICO para que el agente pueda correr como
+  // servicio de Windows (cuenta "Sistema"): tanto el usuario que empareja como
+  // el servicio leen el MISMO archivo. Con LocalAppData del usuario, el servicio
+  // (que corre como LocalSystem) no encontraría la identidad.
+  //   Windows:  C:\ProgramData\shs-scanner
+  //   Mac/Linux: ~/.config/shs-scanner  (el servicio corre como el usuario)
   if (process.platform === "win32") {
-    const localAppData = process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local");
-    return join(localAppData, "shs-scanner");
+    const programData = process.env["PROGRAMDATA"] ?? "C:\\ProgramData";
+    return join(programData, "shs-scanner");
   }
   return join(homedir(), ".config", "shs-scanner");
 }
