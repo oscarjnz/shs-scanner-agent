@@ -34,11 +34,11 @@ $ErrorActionPreference = "Stop"
 $BinName = "shs-scanner.exe"
 $ServiceName = "SHSScanner"
 
-# ─── Helpers de output ─────────────────────────────────────────────
-function Write-Step    { param($Msg) Write-Host "▸ $Msg" -ForegroundColor Cyan }
-function Write-Success { param($Msg) Write-Host "✓ $Msg" -ForegroundColor Green }
-function Write-Warn    { param($Msg) Write-Host "⚠  $Msg" -ForegroundColor Yellow }
-function Write-Err     { param($Msg) Write-Host "✗ $Msg" -ForegroundColor Red }
+# ─── Helpers de output (ASCII puro para evitar problemas de encoding) ────
+function Write-Step    { param($Msg) Write-Host "[*] $Msg" -ForegroundColor Cyan }
+function Write-Success { param($Msg) Write-Host "[OK] $Msg" -ForegroundColor Green }
+function Write-Warn    { param($Msg) Write-Host "[!] $Msg" -ForegroundColor Yellow }
+function Write-Err     { param($Msg) Write-Host "[X] $Msg" -ForegroundColor Red }
 
 # ─── Validar privilegios de administrador ─────────────────────────
 function Test-Administrator {
@@ -204,17 +204,21 @@ function Install-WindowsService {
     Start-Sleep -Seconds 1
   }
 
-  # Crear servicio con sc.exe (más confiable que New-Service en versiones viejas)
-  $exec = "`"$BinPath`" start"
-  & sc.exe create $ServiceName binPath= $exec start= auto DisplayName= "S.S.S Scanner Agent" | Out-Null
-
-  if ($LASTEXITCODE -ne 0) {
-    Write-Err "No se pudo crear el servicio (sc.exe exit $LASTEXITCODE)"
+  # Crear el servicio con New-Service (más limpio que sc.exe + manejo correcto de espacios en rutas)
+  try {
+    $null = New-Service -Name $ServiceName `
+      -BinaryPathName "`"$BinPath`" start" `
+      -DisplayName "S.S.S Scanner Agent" `
+      -Description "Agente local de Security Smart Services que ejecuta escaneos de red bajo demanda." `
+      -StartupType Automatic `
+      -ErrorAction Stop
+  } catch {
+    Write-Err "No se pudo crear el servicio: $($_.Exception.Message)"
     return
   }
 
-  & sc.exe description $ServiceName "Agente local de Security Smart Services que ejecuta escaneos de red bajo demanda." | Out-Null
-  # Reinicio automático: 1er fallo a los 10s, 2do a los 30s, 3er a los 60s
+  # Configurar reinicio automático con sc.exe (no hay equivalente en New-Service)
+  # 1er fallo a los 10s, 2do a los 30s, 3er a los 60s
   & sc.exe failure $ServiceName reset= 86400 actions= restart/10000/restart/30000/restart/60000 | Out-Null
 
   Write-Success "Servicio '$ServiceName' creado."
@@ -234,7 +238,7 @@ function Show-NextSteps {
   param([string]$BinPath)
 
   Write-Host ""
-  Write-Host "✓ Instalación completada." -ForegroundColor Green
+  Write-Host "[OK] Instalacion completada." -ForegroundColor Green
   Write-Host ""
   Write-Host "Próximos pasos:" -ForegroundColor White
   Write-Host ""
