@@ -183,54 +183,48 @@ function Add-ToPath {
   Write-Warn "Las ventanas de PowerShell que ya tenias abiertas necesitaran reabrirse."
 }
 
-# ─── Windows Service ──────────────────────────────────────────────
-function Install-WindowsService {
+# ─── Tarea programada (arranque automatico permanente) ────────────
+# Un .exe de consola NO puede registrarse como Servicio de Windows (no implementa
+# el protocolo del SCM y falla con error 1053). Usamos una Tarea Programada que
+# corre el agente al iniciar el sistema, como SYSTEM, y lo reinicia si se cae.
+function Install-StartupTask {
   param([string]$BinPath)
 
   if ($NoService) {
-    Write-Warn "Saltando registro de Windows Service (-NoService)"
+    Write-Warn "Saltando registro de la tarea de arranque (-NoService)"
     return
   }
 
-  Write-Step "Registrando Windows Service '$ServiceName'..."
+  Write-Step "Registrando tarea de arranque '$ServiceName'..."
 
-  $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-  if ($existing) {
-    if ($existing.Status -eq "Running") {
-      Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    }
-    # Borrar servicio anterior y recrearlo (mas simple que sc.exe config)
+  # Limpiar restos de intentos anteriores (servicio Windows que no funcionaba + tarea)
+  $oldSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+  if ($oldSvc) {
+    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
     & sc.exe delete $ServiceName | Out-Null
-    Start-Sleep -Seconds 1
   }
+  Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
 
-  # Crear el servicio con New-Service (mas limpio que sc.exe + manejo correcto de espacios en rutas)
   try {
-    $null = New-Service -Name $ServiceName `
-      -BinaryPathName "`"$BinPath`" start" `
-      -DisplayName "S.S.S Scanner Agent" `
-      -Description "Agente local de Security Smart Services que ejecuta escaneos de red bajo demanda." `
-      -StartupType Automatic `
-      -ErrorAction Stop
+    $action = New-ScheduledTaskAction -Execute $BinPath -Argument "start"
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+      -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+    Register-ScheduledTask -TaskName $ServiceName -Action $action -Trigger $trigger `
+      -Principal $principal -Settings $settings -Description "Agente local de Security Smart Services" -Force | Out-Null
   } catch {
-    Write-Err "No se pudo crear el servicio: $($_.Exception.Message)"
+    Write-Err "No se pudo crear la tarea de arranque: $($_.Exception.Message)"
     return
   }
 
-  # Configurar reinicio automatico con sc.exe (no hay equivalente en New-Service)
-  # 1er fallo a los 10s, 2do a los 30s, 3er a los 60s
-  & sc.exe failure $ServiceName reset= 86400 actions= restart/10000/restart/30000/restart/60000 | Out-Null
-
-  Write-Success "Servicio '$ServiceName' creado."
+  Write-Success "Tarea de arranque '$ServiceName' creada (corre al encender la PC, como SYSTEM)."
   Write-Host ""
-  Write-Host "  Para arrancarlo:" -ForegroundColor White
-  Write-Host "    Start-Service $ServiceName"
+  Write-Host "  Para arrancarla AHORA (tras emparejar):" -ForegroundColor White
+  Write-Host "    Start-ScheduledTask -TaskName $ServiceName"
   Write-Host ""
   Write-Host "  Para ver su estado:" -ForegroundColor White
-  Write-Host "    Get-Service $ServiceName"
-  Write-Host ""
-  Write-Host "  NOTA: arrancar el servicio AHORA fallara si todavia no emparejaste"
-  Write-Host "        este agente. Empareja primero (paso 2 de abajo) y luego inicia."
+  Write-Host "    Get-ScheduledTask -TaskName $ServiceName | Get-ScheduledTaskInfo"
 }
 
 # ─── Pantalla final ───────────────────────────────────────────────
@@ -251,8 +245,8 @@ function Show-NextSteps {
   Write-Host "  3. Verifica todo con el diagnostico:"
   Write-Host "     shs-scanner doctor" -ForegroundColor White
   Write-Host ""
-  Write-Host "  4. Arranca el servicio (o reinicia tu PC y arrancara solo):"
-  Write-Host "     Start-Service $ServiceName" -ForegroundColor White
+  Write-Host "  4. Arranca el agente en segundo plano (o reinicia tu PC y arranca solo):"
+  Write-Host "     Start-ScheduledTask -TaskName $ServiceName" -ForegroundColor White
   Write-Host ""
   Write-Host "  Para desinstalar en cualquier momento:" -ForegroundColor DarkGray
   Write-Host "     iwr https://securitysmartservices.site/uninstall.ps1 | iex" -ForegroundColor DarkGray
@@ -291,5 +285,5 @@ Test-Nmap | Out-Null
 $binPath = Get-Binary -Arch $arch
 Add-ToPath -Dir $InstallDir
 Initialize-ConfigDir
-Install-WindowsService -BinPath $binPath
+Install-StartupTask -BinPath $binPath
 Show-NextSteps -BinPath $binPath

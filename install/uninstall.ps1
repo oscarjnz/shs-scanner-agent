@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = "Continue"
 $BinName = "shs-scanner.exe"
 $ServiceName = "SHSScanner"
-$ConfigDir = Join-Path $env:LOCALAPPDATA "shs-scanner"
+$ConfigDir = Join-Path $env:ProgramData "shs-scanner"
 
 function Write-Step    { param($Msg) Write-Host "> $Msg" -ForegroundColor Cyan }
 function Write-Success { param($Msg) Write-Host "OK $Msg" -ForegroundColor Green }
@@ -37,17 +37,29 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
   exit 1
 }
 
-# ─── 1) Detener y borrar el servicio ─────────────────────────────
+# ─── 1) Detener y borrar la tarea programada (y el servicio viejo) ─
+$task = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+if ($task) {
+  Write-Step "Deteniendo y borrando tarea programada '$ServiceName'..."
+  Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
+  Write-Success "Tarea programada eliminada"
+}
+
+# Restos del servicio Windows de versiones viejas (ya no se usa)
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
-  Write-Step "Deteniendo Windows Service '$ServiceName'..."
+  Write-Step "Eliminando servicio Windows antiguo '$ServiceName'..."
   if ($svc.Status -eq "Running") {
     Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
   }
   & sc.exe delete $ServiceName | Out-Null
   Start-Sleep -Seconds 1
-  Write-Success "Servicio eliminado"
+  Write-Success "Servicio antiguo eliminado"
 }
+
+# Matar el proceso del agente si esta corriendo
+Get-Process -Name "shs-scanner" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ─── 2) Matar cualquier proceso huerfano ─────────────────────────
 Get-Process | Where-Object { $_.Path -eq (Join-Path $InstallDir $BinName) } |
