@@ -8,7 +8,8 @@
 #
 # Variables que puedes setear antes para personalizar:
 #   SHS_INSTALL_DIR    Default: /usr/local/bin
-#   SHS_VERSION        Default: latest (toma la ultima release)
+#   SHS_VERSION        Default: latest. Si fijas un tag que no existe,
+#                      el instalador cae automaticamente a la ultima release.
 #   SHS_NO_SERVICE=1   No registrar como servicio del sistema
 #   SHS_GITHUB_REPO    Default: oscarjnz/shs-scanner-agent
 #
@@ -145,31 +146,49 @@ ensure_writable() {
   fi
 }
 
+# ─── Descarga: helper que baja una URL con curl o wget ───────────
+# Devuelve 0 si descargo el archivo; distinto de 0 si fallo (404, red...).
+fetch_to() {
+  _url="$1"; _out="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$_out" "$_url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$_out" "$_url"
+  else
+    err "Necesitas 'curl' o 'wget' instalado. Ninguno de los dos esta disponible."
+    exit 1
+  fi
+}
+
 # ─── Descarga del binario ────────────────────────────────────────
+# Robusto: intenta la version pedida y, si no se puede bajar (tag que no
+# existe, una variable SHS_VERSION vieja en el entorno, un proxy, etc.),
+# cae automaticamente a la ultima release. Asi el instalador nunca muere
+# en un 404 por una version mal fijada.
 download_binary() {
   TMP_DIR=$(mktemp -d)
-  local url
-  if [ "$VERSION" = "latest" ]; then
-    url="https://github.com/${GITHUB_REPO}/releases/latest/download/${ASSET}"
+  latest_url="https://github.com/${GITHUB_REPO}/releases/latest/download/${ASSET}"
+
+  if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+    primary_url="$latest_url"
   else
-    url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${ASSET}"
+    primary_url="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${ASSET}"
   fi
 
   step "Descargando $ASSET ($([ "$VERSION" = "latest" ] && echo "ultima version" || echo "$VERSION"))..."
 
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "$TMP_DIR/$BIN_NAME" "$url" || {
-      err "No se pudo descargar de $url"
-      err "Verifica tu conexion a internet o consulta https://github.com/${GITHUB_REPO}/releases"
+  if fetch_to "$primary_url" "$TMP_DIR/$BIN_NAME"; then
+    :
+  elif [ "$primary_url" != "$latest_url" ]; then
+    warn "La version '$VERSION' no se pudo descargar. Usando la ultima version disponible..."
+    if ! fetch_to "$latest_url" "$TMP_DIR/$BIN_NAME"; then
+      err "No se pudo descargar el binario (ni '$VERSION' ni la ultima version)."
+      err "Verifica tu conexion o consulta https://github.com/${GITHUB_REPO}/releases"
       exit 1
-    }
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TMP_DIR/$BIN_NAME" "$url" || {
-      err "No se pudo descargar de $url"
-      exit 1
-    }
+    fi
   else
-    err "Necesitas 'curl' o 'wget' instalado. Ninguno de los dos esta disponible."
+    err "No se pudo descargar de $primary_url"
+    err "Verifica tu conexion a internet o consulta https://github.com/${GITHUB_REPO}/releases"
     exit 1
   fi
 

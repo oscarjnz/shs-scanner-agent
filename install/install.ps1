@@ -101,34 +101,55 @@ function Test-Nmap {
 }
 
 # ─── Descargar binario ────────────────────────────────────────────
+# Baja una URL a un archivo. Lanza excepcion si falla (404, red, etc.).
+function Invoke-Download {
+  param([string]$Url, [string]$OutFile)
+  $previousPP = $ProgressPreference
+  $ProgressPreference = "SilentlyContinue"  # acelera Invoke-WebRequest en PS 5
+  try {
+    Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+  } finally {
+    $ProgressPreference = $previousPP
+  }
+}
+
 function Get-Binary {
   param([string]$Arch)
 
   $asset = "shs-scanner-windows-$Arch.exe"
-  if ($Version -eq "latest") {
-    $url = "https://github.com/$GithubRepo/releases/latest/download/$asset"
+  $latestUrl = "https://github.com/$GithubRepo/releases/latest/download/$asset"
+  if ([string]::IsNullOrWhiteSpace($Version) -or $Version -eq "latest") {
+    $primaryUrl = $latestUrl
   } else {
-    $url = "https://github.com/$GithubRepo/releases/download/$Version/$asset"
+    $primaryUrl = "https://github.com/$GithubRepo/releases/download/$Version/$asset"
   }
 
-  Write-Step "Descargando $asset..."
+  Write-Step "Descargando $asset ($(if ($Version -eq 'latest') { 'ultima version' } else { $Version }))..."
 
+  # Robusto: intenta la version pedida y, si no se puede bajar (tag que no
+  # existe, parametro -Version mal puesto, etc.), cae a la ultima release.
   $tmp = New-TemporaryFile
   try {
-    # ProgressPreference=SilentlyContinue acelera Invoke-WebRequest en PowerShell 5
-    $previousPP = $ProgressPreference
-    $ProgressPreference = "SilentlyContinue"
-    try {
-      Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
-    } finally {
-      $ProgressPreference = $previousPP
-    }
+    Invoke-Download -Url $primaryUrl -OutFile $tmp
   } catch {
-    Write-Err "No se pudo descargar de $url"
-    Write-Err "Detalle: $($_.Exception.Message)"
-    Write-Err "Verifica tu conexion o consulta https://github.com/$GithubRepo/releases"
-    Remove-Item $tmp -ErrorAction SilentlyContinue
-    exit 1
+    if ($primaryUrl -ne $latestUrl) {
+      Write-Warn "La version '$Version' no se pudo descargar. Usando la ultima version disponible..."
+      try {
+        Invoke-Download -Url $latestUrl -OutFile $tmp
+      } catch {
+        Write-Err "No se pudo descargar el binario (ni '$Version' ni la ultima version)."
+        Write-Err "Detalle: $($_.Exception.Message)"
+        Write-Err "Verifica tu conexion o consulta https://github.com/$GithubRepo/releases"
+        Remove-Item $tmp -ErrorAction SilentlyContinue
+        exit 1
+      }
+    } else {
+      Write-Err "No se pudo descargar de $primaryUrl"
+      Write-Err "Detalle: $($_.Exception.Message)"
+      Write-Err "Verifica tu conexion o consulta https://github.com/$GithubRepo/releases"
+      Remove-Item $tmp -ErrorAction SilentlyContinue
+      exit 1
+    }
   }
 
   # Verificar que el binario se ejecuta

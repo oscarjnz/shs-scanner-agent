@@ -10,14 +10,15 @@
  *   shs-scanner doctor            Diagnóstico: chequea nmap, conectividad, permisos
  *   shs-scanner version           Muestra la versión del agente
  */
-import { loadConfig, getConfigPath } from "./config.js";
+import { loadConfig, getConfigPath, type AgentConfig } from "./config.js";
 import { pair } from "./pairing.js";
 import { RelayClient } from "./relay-client.js";
 import { runScan, checkNmapInstalled } from "./scanner.js";
 import { getSystemInfo } from "./system-info.js";
+import { startLocalServer } from "./local-server.js";
 import { existsSync, unlinkSync } from "node:fs";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.3";
 
 async function cmdPair(code: string | undefined): Promise<void> {
   if (!code) {
@@ -34,8 +35,8 @@ async function cmdPair(code: string | undefined): Promise<void> {
 }
 
 async function cmdStart(): Promise<void> {
-  const config = loadConfig();
-  if (!config) {
+  const initialConfig = loadConfig();
+  if (!initialConfig) {
     console.error("✗ Este agente no está emparejado.");
     console.error("\nEjecuta primero: shs-scanner pair <código>");
     console.error("Obtén el código desde tu dashboard de S.S.S.");
@@ -43,13 +44,57 @@ async function cmdStart(): Promise<void> {
   }
 
   console.log(`S.S.S Scanner Agent v${VERSION}`);
-  console.log(`Agent ID: ${config.agentId}`);
-  console.log(`Conectando a: ${config.relayUrl}\n`);
+  console.log(`Agent ID: ${initialConfig.agentId}`);
+  console.log(`Conectando a: ${initialConfig.relayUrl}\n`);
 
   // Mantener jobs activos para poder cancelarlos
   const activeJobs = new Map<string, AbortController>();
 
-  const client = new RelayClient(config, {
+  // Holder mutable del client: tras un /repair re-conectamos al relay
+  // con la nueva identidad; los callbacks usan `clientHolder.current`
+  // para enviar siempre por la conexión vigente.
+  const clientHolder: { current: RelayClient } = {
+    current: buildRelayClient(initialConfig, activeJobs, () => clientHolder.current),
+  };
+  let currentConfig: AgentConfig = initialConfig;
+  clientHolder.current.connect();
+
+  // Servidor local (loopback) para que el dashboard pueda detectar este
+  // agente y, si el usuario lo autoriza, transferirlo a otra cuenta.
+  const stopLocalServer = startLocalServer({
+    version: VERSION,
+    getConfig: () => currentConfig,
+    onRepaired: (newConfig) => {
+      console.log(`[start] Agente re-emparejado a org ${newConfig.orgId}. Reconectando relay…`);
+      for (const abort of activeJobs.values()) abort.abort();
+      activeJobs.clear();
+      clientHolder.current.shutdown();
+      currentConfig = newConfig;
+      clientHolder.current = buildRelayClient(newConfig, activeJobs, () => clientHolder.current);
+      clientHolder.current.connect();
+    },
+  });
+
+  // Apagar limpio con Ctrl+C
+  const shutdown = () => {
+    console.log("\nApagando agente…");
+    for (const abort of activeJobs.values()) abort.abort();
+    stopLocalServer();
+    clientHolder.current.shutdown();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+/** Helper: construye un RelayClient con los handlers de scan/cancel estándar. */
+function buildRelayClient(
+  config: AgentConfig,
+  activeJobs: Map<string, AbortController>,
+  /** Lazy getter para acceder a la conexión vigente desde dentro de los callbacks. */
+  getCurrent: () => RelayClient,
+): RelayClient {
+  return new RelayClient(config, {
     onScanRequest: async (jobId, target, nmapArgs) => {
       const abort = new AbortController();
       activeJobs.set(jobId, abort);
@@ -58,10 +103,10 @@ async function cmdStart(): Promise<void> {
         const result = await runScan(
           target,
           nmapArgs,
-          (message) => client.send({ type: "scan_progress", jobId, message }),
+          (message) => getCurrent().send({ type: "scan_progress", jobId, message }),
           abort.signal,
         );
-        client.send({
+        getCurrent().send({
           type: "scan_result",
           jobId,
           rawOutput: result.rawOutput,
@@ -79,18 +124,6 @@ async function cmdStart(): Promise<void> {
       }
     },
   });
-
-  client.connect();
-
-  // Apagar limpio con Ctrl+C
-  const shutdown = () => {
-    console.log("\nApagando agente…");
-    for (const abort of activeJobs.values()) abort.abort();
-    client.shutdown();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }
 
 function cmdStatus(): void {
