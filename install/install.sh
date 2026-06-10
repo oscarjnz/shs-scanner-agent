@@ -65,7 +65,11 @@ detect_platform() {
 
   # En Mac arm64 seria Apple Silicon; x64 seria Intel
   ASSET="shs-scanner-${OS}-${ARCH}"
-  [ "$OS" = "macos" ] && [ "$ARCH" = "x64" ] && ASSET="shs-scanner-macos-x64"
+  # OJO: un 'A && B && C' como ultima linea devuelve no-cero si A o B son falsos,
+  # y con 'set -e' eso MATA el script en silencio. Por eso usamos un if explicito.
+  if [ "$OS" = "macos" ] && [ "$ARCH" = "x64" ]; then
+    ASSET="shs-scanner-macos-x64"
+  fi
 }
 
 # ─── Linux: detectar distribucion ────────────────────────────────
@@ -323,7 +327,10 @@ main() {
   detect_platform
   step "Sistema detectado: $OS / $ARCH"
 
-  [ "$OS" = "linux" ] && detect_distro && step "Distribucion: $DISTRO"
+  if [ "$OS" = "linux" ]; then
+    detect_distro
+    step "Distribucion: $DISTRO"
+  fi
 
   check_nmap
   ensure_writable
