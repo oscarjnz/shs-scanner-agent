@@ -18,7 +18,7 @@ import { getSystemInfo } from "./system-info.js";
 import { startLocalServer } from "./local-server.js";
 import { existsSync, unlinkSync } from "node:fs";
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 async function cmdPair(code: string | undefined): Promise<void> {
   if (!code) {
@@ -40,6 +40,29 @@ async function cmdStart(): Promise<void> {
     console.error("✗ Este agente no está emparejado.");
     console.error("\nEjecuta primero: shs-scanner pair <código>");
     console.error("Obtén el código desde tu dashboard de S.S.S.");
+    process.exit(1);
+  }
+
+  // ─── Anti-doble-instancia ────────────────────────────────────────
+  // Si el puerto local del agente ya está vivo Y devuelve nuestra misma
+  // identidad, significa que el servicio del sistema (launchd / systemd)
+  // ya está corriendo. Lanzar otra copia genera un ping-pong infinito en
+  // el relay: cada una desplaza a la otra al conectarse. Mejor abortar.
+  const existing = await probeLocalAgent();
+  if (existing?.agentId === initialConfig.agentId) {
+    console.error(`✗ Ya hay otra instancia de shs-scanner corriendo en esta máquina.`);
+    console.error(`  Agent ID detectado: ${existing.agentId}`);
+    console.error(`  Versión:            ${existing.version ?? "?"}`);
+    console.error();
+    console.error(`  Si arrancaste el servicio con el instalador, ya está activo en segundo plano.`);
+    console.error(`  Para verlo o pararlo:`);
+    if (process.platform === "darwin") {
+      console.error(`    launchctl print  gui/$(id -u)/com.shs.scanner`);
+      console.error(`    launchctl bootout gui/$(id -u)/com.shs.scanner   # parar`);
+    } else if (process.platform === "linux") {
+      console.error(`    systemctl status shs-scanner`);
+      console.error(`    sudo systemctl stop shs-scanner                  # parar`);
+    }
     process.exit(1);
   }
 
@@ -252,6 +275,28 @@ async function main(): Promise<void> {
       console.error(`Comando desconocido: ${command}`);
       printHelp();
       process.exit(1);
+  }
+}
+
+/**
+ * Pregunta al servidor local del propio agente quién es. Si nadie contesta
+ * o la respuesta no es válida, devolvemos null y seguimos: NO es evidencia
+ * de que haya otra instancia (puede no haber nada, o puede haber otro
+ * proceso usando el puerto). Solo nos importa el caso positivo: alguien
+ * responde con un agentId.
+ */
+async function probeLocalAgent(): Promise<{ agentId?: string; version?: string } | null> {
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 800);
+    const res = await fetch("http://127.0.0.1:47878/whoami", { signal: ctrl.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { agentId?: string; version?: string };
+    return json && typeof json.agentId === "string" ? json : null;
+  } catch {
+    // ECONNREFUSED / timeout / lo que sea → nadie respondiendo en ese puerto.
+    return null;
   }
 }
 

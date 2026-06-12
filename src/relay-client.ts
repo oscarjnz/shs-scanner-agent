@@ -85,8 +85,35 @@ export class RelayClient {
     });
 
     this.ws.on("close", (code, reason) => {
-      console.warn(`[relay] Conexión cerrada (${code}) ${reason.toString() || ""}`);
+      const reasonStr = reason.toString() || "";
+      console.warn(`[relay] Conexión cerrada (${code}) ${reasonStr}`);
       this.cleanupHeartbeat();
+
+      // Si el relay nos cerró porque OTRA instancia con el mismo agentId
+      // se conectó, NO reconectes: vas a entrar en un ping-pong infinito
+      // peleándote con la otra instancia. Sal con un mensaje claro para
+      // que el usuario sepa qué pasa.
+      // El backend manda code 1000 con motivo "Reemplazado por nueva conexión"
+      // (o "replaced"); matcheamos flexible por si cambia la redacción.
+      const lower = reasonStr.toLowerCase();
+      if (lower.includes("reemplazad") || lower.includes("replaced") || lower.includes("duplicate")) {
+        console.error(
+          "\n[relay] Otra instancia de shs-scanner con la misma identidad se conectó al relay y nos desplazó.\n" +
+          "       Casi siempre esto significa que el servicio del sistema (launchd/systemd) ya está\n" +
+          "       corriendo y tú lanzaste 'shs-scanner start' a mano. Sólo puede haber UNA instancia\n" +
+          "       activa por agente.\n\n" +
+          "       Qué hacer:\n" +
+          "         • macOS:   launchctl bootout gui/$(id -u)/com.shs.scanner    # para el servicio\n" +
+          "                    launchctl print gui/$(id -u)/com.shs.scanner       # para ver si está corriendo\n" +
+          "         • Linux:   sudo systemctl stop shs-scanner\n" +
+          "                    systemctl status shs-scanner                       # para ver si está corriendo\n",
+        );
+        this.shuttingDown = true;
+        // Pequeña pausa para que los logs salgan antes de que el proceso muera.
+        setTimeout(() => process.exit(2), 100);
+        return;
+      }
+
       this.scheduleReconnect();
     });
 

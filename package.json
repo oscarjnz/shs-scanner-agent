@@ -1,6 +1,6 @@
 {
   "name": "shs-scanner-agent",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Agente local de S.S.S que ejecuta escaneos de red en la máquina del cliente. Open source — MIT.",
   "private": false,
   "license": "MIT",
