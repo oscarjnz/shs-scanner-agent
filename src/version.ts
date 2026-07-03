@@ -6,4 +6,4 @@
  * version incorrecta. Mantener este archivo como fuente unica evita esa deriva.
  * Debe coincidir con el "version" de package.json al hacer release.
  */
-export const VERSION = "0.1.4";
+export const VERSION = "0.1.5";
