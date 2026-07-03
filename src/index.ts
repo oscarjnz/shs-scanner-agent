@@ -17,8 +17,7 @@ import { runScan, checkNmapInstalled } from "./scanner.js";
 import { getSystemInfo } from "./system-info.js";
 import { startLocalServer } from "./local-server.js";
 import { existsSync, unlinkSync } from "node:fs";
-
-const VERSION = "0.1.4";
+import { VERSION } from "./version.js";
 
 async function cmdPair(code: string | undefined): Promise<void> {
   if (!code) {

@@ -11,6 +11,7 @@
 import WebSocket from "ws";
 import type { AgentConfig } from "./config.js";
 import { getSystemInfo } from "./system-info.js";
+import { VERSION } from "./version.js";
 
 /** Mensajes que el agente RECIBE del backend */
 export type InboundMessage =
@@ -33,7 +34,7 @@ export interface RelayHandlers {
   onCancel: (jobId: string) => void;
 }
 
-const AGENT_VERSION = "0.1.0";
+const AGENT_VERSION = VERSION;
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_MAX_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -187,7 +188,12 @@ export class RelayClient {
   private scheduleReconnect(): void {
     if (this.shuttingDown) return;
     // Backoff exponencial: 2s, 4s, 8s, 16s, 32s, 60s, 60s...
-    const delay = Math.min(RECONNECT_BASE_MS * 2 ** this.reconnectAttempts, RECONNECT_MAX_MS);
+    const base = Math.min(RECONNECT_BASE_MS * 2 ** this.reconnectAttempts, RECONNECT_MAX_MS);
+    // Jitter ±30%: si el relay se reinicia, todos los agentes vieron el mismo
+    // 'close' casi a la vez. Sin jitter reintentarían en lockstep y le caerían
+    // encima al relay recién levantado (thundering herd). El jitter los reparte.
+    const jitter = base * 0.3 * (Math.random() * 2 - 1);
+    const delay = Math.max(RECONNECT_BASE_MS, Math.round(base + jitter));
     this.reconnectAttempts++;
     console.log(`[relay] Reintentando en ${Math.round(delay / 1000)}s (intento ${this.reconnectAttempts})`);
     setTimeout(() => this.connect(), delay);

@@ -27,6 +27,24 @@ const ALLOWED_NMAP_FLAGS = new Set([
   "-v", "-vv", "-d",
 ]);
 
+/**
+ * Límite duro de salida acumulada (stdout+stderr) por escaneo. Sin esto un
+ * `nmap -p- -v` muy verboso podría acumular cientos de MB en memoria en la
+ * máquina del usuario y, al enviarse como un solo frame WS, tumbar el relay.
+ * El relay solo guarda ~200KB, así que 1MB aquí es holgado y nunca pierde nada
+ * útil. Configurable por si acaso.
+ */
+const MAX_OUTPUT_BYTES = Number(process.env["SHS_SCAN_MAX_OUTPUT_BYTES"] ?? 1024 * 1024);
+
+/**
+ * Timeout local de seguridad por escaneo. La cancelación normal llega por el
+ * mensaje `cancel` del relay, pero si esa señal nunca llega (relay caído, red
+ * partida) un escaneo no debe correr indefinidamente en la máquina del usuario.
+ * Generoso a propósito (20 min) para no matar escaneos legítimos largos como
+ * un TCP completo; el timeout del job en el relay es de 30 min.
+ */
+const MAX_SCAN_MS = Number(process.env["SHS_SCAN_TIMEOUT_MS"] ?? 20 * 60_000);
+
 function isFlagAllowed(flag: string): boolean {
   if (!flag.startsWith("-")) return true; // valores posicionales (target, números de puerto)
   // Acepta flags exactos o que empiecen con uno permitido seguido de =
@@ -87,10 +105,27 @@ export async function runScan(
 
     let stdout = "";
     let stderr = "";
+    let totalBytes = 0;
+    let truncated = false;
+    let timedOut = false;
+
+    // Corta el proceso si la salida supera el límite: evita OOM en la máquina
+    // del usuario y frames gigantes hacia el relay.
+    const enforceCap = (addedBytes: number) => {
+      totalBytes += addedBytes;
+      if (totalBytes > MAX_OUTPUT_BYTES && !truncated) {
+        truncated = true;
+        onProgress("[salida truncada: límite de salida alcanzado]");
+        proc.kill("SIGTERM");
+        setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 2000);
+      }
+    };
 
     proc.stdout.on("data", (chunk: Buffer) => {
+      if (truncated) return;
       const text = chunk.toString();
       stdout += text;
+      enforceCap(chunk.byteLength);
       // Si nmap saca una línea de progreso, la reenviamos para que el dashboard la muestre en vivo
       const lastLine = text.trim().split("\n").pop();
       if (lastLine && lastLine.length > 0 && lastLine.length < 200) {
@@ -99,8 +134,15 @@ export async function runScan(
     });
 
     proc.stderr.on("data", (chunk: Buffer) => {
+      if (truncated) return;
       stderr += chunk.toString();
+      enforceCap(chunk.byteLength);
     });
+
+    const cleanup = () => {
+      clearTimeout(hardTimeout);
+      abortSignal.removeEventListener("abort", onAbort);
+    };
 
     const onAbort = () => {
       onProgress("Cancelado por el usuario");
@@ -111,8 +153,16 @@ export async function runScan(
     };
     abortSignal.addEventListener("abort", onAbort, { once: true });
 
+    // Timeout local de seguridad: si el escaneo se pasa de MAX_SCAN_MS, lo matamos.
+    const hardTimeout = setTimeout(() => {
+      timedOut = true;
+      onProgress(`[timeout: el escaneo excedió ${Math.round(MAX_SCAN_MS / 1000)}s]`);
+      proc.kill("SIGTERM");
+      setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, 2000);
+    }, MAX_SCAN_MS);
+
     proc.on("error", (err) => {
-      abortSignal.removeEventListener("abort", onAbort);
+      cleanup();
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(new Error("nmap no está instalado en esta máquina. Instálalo desde https://nmap.org/download"));
       } else {
@@ -121,13 +171,17 @@ export async function runScan(
     });
 
     proc.on("close", (code) => {
-      abortSignal.removeEventListener("abort", onAbort);
+      cleanup();
       if (abortSignal.aborted) {
         reject(new Error("Escaneo cancelado"));
         return;
       }
+      if (timedOut) {
+        reject(new Error(`Escaneo cancelado por timeout (${Math.round(MAX_SCAN_MS / 1000)}s)`));
+        return;
+      }
       resolve({
-        rawOutput: stdout + (stderr ? `\n--- stderr ---\n${stderr}` : ""),
+        rawOutput: stdout + (stderr ? `\n--- stderr ---\n${stderr}` : "") + (truncated ? "\n--- salida truncada ---" : ""),
         durationMs: Date.now() - startedAt,
         exitCode: code ?? -1,
       });
